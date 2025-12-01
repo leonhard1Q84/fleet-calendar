@@ -1,9 +1,9 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { differenceInDays, differenceInHours, addDays, addHours, format, isSameDay, isWeekend, startOfDay } from 'date-fns';
 import { CarGroup, Vehicle, FleetEvent, EventType } from '../types';
 import { CELL_WIDTH, ROW_HEIGHT, HEADER_HEIGHT, getEventColor } from '../constants';
-import { AlertCircle, Snowflake, ChevronLeft, ChevronRight, Eye, GripHorizontal, ArrowLeft } from 'lucide-react';
+import { AlertCircle, Snowflake, ChevronLeft, ChevronRight, Eye, ArrowLeft } from 'lucide-react';
 
 interface TimelineProps {
   groups: CarGroup[];
@@ -21,16 +21,10 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
   const [viewScale, setViewScale] = useState<ViewScale>('day');
   const [focusDate, setFocusDate] = useState<Date>(propStartDate);
 
-  // Scroll State
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const topScrollContainerRef = useRef<HTMLDivElement>(null);
-  const isSyncingRef = useRef(false);
-
-  // Drag State
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
-
+  // If daysToShow is 1 (Day view mode), we might default to hour view or just show 1 big day column.
+  // The user requirement says "Clicking a date header... switches to Hour View". 
+  // So we keep 'day' scale by default even for 1 day, unless clicked.
+  
   // Calculated properties based on scale
   const activeStartDate = viewScale === 'day' ? propStartDate : startOfDay(focusDate);
   const cellWidth = viewScale === 'day' ? CELL_WIDTH : 80; // Smaller cells for hours
@@ -43,6 +37,16 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
   });
 
   const totalContentWidth = columnsCount * cellWidth;
+
+  // Scroll State
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollContainerRef = useRef<HTMLDivElement>(null);
+  const isSyncingRef = useRef(false);
+
+  // Drag State
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
 
   // Sync scroll handlers
   const handleScrollMain = () => {
@@ -66,7 +70,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
   // Drag to Scroll Logic
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!scrollContainerRef.current) return;
-    // Only drag if clicking on the grid area (not on interactive elements)
     if ((e.target as HTMLElement).closest('.pointer-events-auto')) return;
     
     setIsDragging(true);
@@ -86,7 +89,7 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
     if (!isDragging || !scrollContainerRef.current) return;
     e.preventDefault();
     const x = e.pageX - scrollContainerRef.current.offsetLeft;
-    const walk = (x - startX) * 1.5; // Scroll speed multiplier
+    const walk = (x - startX) * 1.5;
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
@@ -111,7 +114,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
     let width = 0;
 
     if (viewScale === 'day') {
-      // Day Logic
       const diffDays = differenceInDays(eventStart, activeStartDate);
       const startOffsetHours = (eventStart.getHours() + eventStart.getMinutes() / 60) / 24;
       const endOffsetHours = (eventEnd.getHours() + eventEnd.getMinutes() / 60) / 24;
@@ -120,7 +122,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
       left = (diffDays + startOffsetHours) * cellWidth;
       width = Math.max(durationDays * cellWidth, 20);
     } else {
-      // Hour Logic
       const diffHours = differenceInHours(eventStart, activeStartDate) + eventStart.getMinutes() / 60;
       const durationHours = differenceInHours(eventEnd, eventStart) + (eventEnd.getMinutes() - eventStart.getMinutes()) / 60;
       
@@ -166,7 +167,7 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
         ref={topScrollContainerRef}
         onScroll={handleScrollTop}
         className="overflow-x-auto border-b border-gray-100 bg-gray-50/50 flex-shrink-0"
-        style={{ height: '12px' }} // Slim scrollbar area
+        style={{ height: '12px' }} 
       >
         <div style={{ width: totalContentWidth + 260, height: '1px' }}></div>
       </div>
@@ -207,13 +208,13 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
 
                  return (
                    <div key={group.id}>
-                     {/* Group Header (Sticky within sidebar) */}
+                     {/* Group Header */}
                      <div className="bg-slate-100/95 backdrop-blur-sm px-4 py-1.5 border-y border-gray-200 flex justify-between items-center sticky top-[80px] z-30 shadow-sm">
                        <span className="font-bold text-slate-700 text-xs uppercase tracking-wide">{group.name}</span>
                        <span className="text-[10px] bg-slate-200 px-1.5 rounded text-slate-600 font-mono">{group.code}</span>
                      </div>
 
-                     {/* Queue Row Label */}
+                     {/* Queue Row */}
                      <div style={{ height: ROW_HEIGHT }} className="flex flex-col justify-center px-4 border-b border-gray-100 bg-stripes">
                        <div className="flex items-center gap-2">
                            <span className={`text-sm font-bold ${hasUnassigned ? "text-yellow-700" : "text-gray-400"}`}>Queue / 3rd Party</span>
@@ -227,7 +228,7 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
                        <div className="text-[10px] text-gray-400 mt-0.5">Unassigned or Outsourced</div>
                      </div>
 
-                     {/* Vehicle Rows Label */}
+                     {/* Vehicle Rows */}
                      {groupVehicles.map(v => (
                        <div key={v.id} style={{ height: ROW_HEIGHT }} className="flex flex-col justify-center px-4 border-b border-gray-50 hover:bg-blue-50/30 transition-colors relative border-l-4 border-l-transparent hover:border-l-blue-500 bg-white group">
                          <div className="flex items-baseline justify-between">
@@ -313,10 +314,10 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
 
                     return (
                       <div key={group.id}>
-                        {/* Header Spacer (Aligned with sticky sidebar header) */}
+                        {/* Header Spacer */}
                         <div className="h-[31px] w-full border-y border-transparent bg-slate-50/50 sticky top-[80px] z-20"></div>
                         
-                        {/* Queue Row Events */}
+                        {/* Queue Row */}
                         <div style={{ height: ROW_HEIGHT }} className="relative w-full border-b border-transparent">
                            {unassignedEvents.map(event => {
                              const { left, width, rawWidth, rawLeft } = getEventStyle(event);
@@ -339,7 +340,7 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
                            })}
                         </div>
 
-                        {/* Vehicle Rows Events */}
+                        {/* Vehicle Rows */}
                         {groupVehicles.map(v => {
                           const vehicleEvents = getEventsForVehicle(v.id);
                           return (
@@ -423,10 +424,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
                <span className="w-2.5 h-2.5 bg-indigo-500 rounded-sm"></span>
                <span className="text-gray-600">Picked Up</span>
             </div>
-            <div className="flex items-center gap-1.5" title="Returned / Completed">
-               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
-               <span className="text-gray-600">Completed</span>
-            </div>
          </div>
 
          <div className="w-px h-3 bg-gray-300"></div>
@@ -438,10 +435,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
                <span className="w-2.5 h-2.5 bg-slate-600 rounded-sm"></span>
                <span className="text-gray-600">Active</span>
             </div>
-            <div className="flex items-center gap-1.5" title="History">
-               <span className="w-2.5 h-2.5 bg-slate-300 rounded-sm"></span>
-               <span className="text-gray-600">Done</span>
-            </div>
          </div>
 
          <div className="w-px h-3 bg-gray-300"></div>
@@ -452,10 +445,6 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
              <div className="flex items-center gap-1.5">
                <span className="w-2.5 h-2.5 bg-red-500 rounded-sm"></span>
                <span className="text-gray-600">Active</span>
-            </div>
-             <div className="flex items-center gap-1.5">
-               <span className="w-2.5 h-2.5 bg-red-200 rounded-sm"></span>
-               <span className="text-gray-600">Done</span>
             </div>
          </div>
 
@@ -472,6 +461,16 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
 
          <div className="w-px h-3 bg-gray-300"></div>
 
+          {/* Group: History */}
+          <div className="flex items-center gap-3">
+             <div className="flex items-center gap-1.5">
+               <span className="w-2.5 h-2.5 bg-slate-200 rounded-sm border border-slate-300"></span>
+               <span className="text-gray-500 font-medium">History / Released</span>
+            </div>
+         </div>
+
+         <div className="w-px h-3 bg-gray-300"></div>
+
          {/* Extra */}
          <div className="flex items-center gap-2">
             <Snowflake size={12} className="text-sky-500" />
@@ -479,7 +478,7 @@ const Timeline: React.FC<TimelineProps> = ({ groups, vehicles, events, startDate
          </div>
 
          <div className="flex-1 text-right text-gray-400 text-[10px]">
-           {viewScale === 'day' ? '21 Day View' : `Hourly View: ${format(focusDate, 'MMM d, yyyy')}`}
+           {viewScale === 'day' ? `${daysToShow} Day View` : `Hourly View: ${format(focusDate, 'MMM d, yyyy')}`}
          </div>
       </div>
 

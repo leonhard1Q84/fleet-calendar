@@ -10,25 +10,26 @@ export const ROW_HEIGHT = 64;
 export const getEventColor = (event: FleetEvent): string => {
   const status = event.status?.toLowerCase() || '';
 
+  // Unified History/Done State
+  if (status.includes('completed') || status.includes('returned') || status.includes('done') || status.includes('past')) {
+    return 'bg-slate-100 text-slate-500 border border-slate-200'; // Universal History Color
+  }
+
   switch (event.type) {
     case EventType.BOOKING_UNASSIGNED:
       return 'bg-yellow-500 text-white shadow-sm shadow-yellow-900/10 border-l-4 border-yellow-700'; // Pending Assignment
     
     case EventType.BOOKING_ASSIGNED:
       if (status.includes('picked up') || status.includes('active')) return 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/10'; // Picked Up
-      if (status.includes('completed') || status.includes('returned')) return 'bg-emerald-500 text-white shadow-sm shadow-emerald-900/10'; // Completed
       return 'bg-blue-500 text-white shadow-sm shadow-blue-900/10'; // Assigned / Confirmed
 
     case EventType.MAINTENANCE:
-      if (status.includes('completed')) return 'bg-slate-300 text-slate-600 border border-slate-200'; // Completed History
       return 'bg-slate-600 text-white shadow-sm shadow-slate-900/10'; // In Progress
 
     case EventType.STOP_SALE:
-      if (status.includes('completed')) return 'bg-red-200 text-red-700 border border-red-200'; // Past
       return 'bg-red-500 text-white shadow-sm shadow-red-900/10'; // Active
 
     case EventType.BLOCK:
-      if (status.includes('completed')) return 'bg-orange-200 text-orange-700 border border-orange-200'; // Past
       return 'bg-orange-500 text-white shadow-sm shadow-orange-900/10'; // Active
 
     default:
@@ -42,6 +43,20 @@ export const EVENT_LABELS: Record<EventType, string> = {
   [EventType.MAINTENANCE]: 'Maintenance',
   [EventType.STOP_SALE]: 'Stop Sale',
   [EventType.BLOCK]: 'Internal Block',
+};
+
+// Helper: Check date overlap
+export const checkOverlap = (
+  start1: string, 
+  end1: string, 
+  start2: string, 
+  end2: string
+): boolean => {
+  const s1 = new Date(start1).getTime();
+  const e1 = new Date(end1).getTime();
+  const s2 = new Date(start2).getTime();
+  const e2 = new Date(end2).getTime();
+  return s1 < e2 && s2 < e1;
 };
 
 // Mock Data
@@ -101,7 +116,7 @@ export const MOCK_EVENTS: FleetEvent[] = [
     pickupLocation: 'SFO-01',
     dropoffLocation: 'LAX-01',
   },
-  // Completed (Green)
+  // Completed (Gray)
   {
     id: 'e2_short',
     type: EventType.BOOKING_ASSIGNED,
@@ -146,7 +161,7 @@ export const MOCK_EVENTS: FleetEvent[] = [
     status: 'In Progress',
     notes: 'Oil leak check.'
   },
-  // Completed Maintenance (Light Slate)
+  // Completed Maintenance (Gray)
   {
     id: 'e4_past',
     type: EventType.MAINTENANCE,
@@ -186,7 +201,7 @@ export const MOCK_EVENTS: FleetEvent[] = [
     status: 'Active',
     notes: 'Cleaning for VIP client.'
   },
-    // Assigned Bookings Group 3 - Returned (Green)
+    // Assigned Bookings Group 3 - Returned (Gray)
     {
       id: 'e7',
       type: EventType.BOOKING_ASSIGNED,
