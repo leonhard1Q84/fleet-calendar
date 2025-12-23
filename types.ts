@@ -1,4 +1,5 @@
 
+
 export enum EventType {
   BOOKING_ASSIGNED = 'BOOKING_ASSIGNED',
   BOOKING_UNASSIGNED = 'BOOKING_UNASSIGNED', // Overbooking/Pending
@@ -10,18 +11,20 @@ export enum EventType {
 export interface CarGroup {
   id: string;
   name: string;
-  code: string; // e.g., SIPP code
+  // code: string; // Removed generic code from group, moved to vehicle/logic
 }
 
 export interface Vehicle {
   id: string;
   plate: string;
   model: string;
+  sipp: string; // Added SIPP code specific to vehicle/model
   color: string;
   groupId: string;
   status: 'active' | 'maintenance' | 'stopped';
   storeId: string;
   features?: string[]; // e.g. ['snow_tires']
+  isVirtual?: boolean; // If true, this represents a 3rd party or pool resource with infinite capacity
 }
 
 export interface FleetEvent {
@@ -42,6 +45,9 @@ export interface FleetEvent {
   pickupLocation?: string;
   dropoffLocation?: string;
   
+  // Booking specific
+  modelPreference?: string; // The model requested by customer (e.g. "Toyota Yaris")
+
   // Maintenance specific
   maintenanceType?: string; // "Routine", "Repair", "Inspection"
   mechanic?: string;
