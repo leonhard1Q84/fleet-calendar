@@ -1,5 +1,4 @@
 
-
 export enum EventType {
   BOOKING_ASSIGNED = 'BOOKING_ASSIGNED',
   BOOKING_UNASSIGNED = 'BOOKING_UNASSIGNED', // Overbooking/Pending
@@ -21,7 +20,7 @@ export interface Vehicle {
   sipp: string; // Added SIPP code specific to vehicle/model
   color: string;
   groupId: string;
-  status: 'active' | 'maintenance' | 'stopped';
+  status: 'available' | 'maintenance' | 'backup'; // Updated status
   storeId: string;
   features?: string[]; // e.g. ['snow_tires']
   isVirtual?: boolean; // If true, this represents a 3rd party or pool resource with infinite capacity
