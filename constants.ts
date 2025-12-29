@@ -23,7 +23,15 @@ export const getEventColor = (event: FleetEvent): string => {
       return 'bg-amber-400 text-amber-950 border-l-4 border-amber-600 shadow-sm'; 
     
     case EventType.BOOKING_ASSIGNED:
+      // Locked/Pre-assigned events get a specific look (e.g., slightly darker or specific border)
+      // For now, we keep the base color but relying on the Icon in UI to distinguish.
+      // However, if it's 'Picked Up', it usually overrides 'Locked' visually as it's active.
       if (status.includes('picked up') || status.includes('active')) return 'bg-indigo-600 text-white shadow-sm'; 
+      
+      if (event.isLocked) {
+         return 'bg-blue-600 text-white shadow-md ring-1 ring-blue-700'; // Slightly darker/stronger for locked
+      }
+
       return 'bg-blue-500 text-white shadow-sm'; 
 
     case EventType.MAINTENANCE:
@@ -78,7 +86,7 @@ export const MOCK_VEHICLES: Vehicle[] = [
   { id: 'v5', plate: '成田300わ2435', model: 'Toyota Yaris', sipp: 'ECMR', color: 'White', groupId: 'g1', status: 'backup', storeId: 'Narita', features: ['snow_tires'] }, 
   
   // VIRTUAL RESOURCE (3rd Party Pool)
-  { id: 'v_virt_1', plate: 'Orix Sub-fleet', model: 'Ext. Pool (Any)', sipp: 'ECMR', color: 'Mixed', groupId: 'g1', status: 'available', storeId: 'Narita', isVirtual: true },
+  { id: 'v_virt_1', plate: 'Third-party Pool', model: 'Ext. Provider', sipp: 'ECMR', color: 'Mixed', groupId: 'g1', status: 'available', storeId: 'Narita', isVirtual: true },
 
   // --- Group 2: Compact ---
   { id: 'v6', plate: '成田300わ2438', model: 'Toyota Corolla', sipp: 'CDAR', color: 'Black', groupId: 'g2', status: 'available', storeId: 'Narita', features: ['telematics'] },
@@ -105,28 +113,31 @@ export const MOCK_EVENTS: FleetEvent[] = [
     id: 'e1',
     type: EventType.BOOKING_ASSIGNED,
     groupId: 'g1',
-    vehicleId: 'v1', // 2234
+    vehicleId: 'v1', // 2234 (Narita)
     startDate: addDays(-1),
     endDate: addDays(4),
     customerName: 'Tanaka Sato',
     reservationId: 'RES-1001',
     status: 'Picked Up',
     pickupLocation: 'Narita T1',
-    dropoffLocation: 'Narita T1',
-    notes: 'Late arrival'
+    dropoffLocation: 'Haneda', // ONE-WAY: Narita -> Haneda
+    notes: 'Late arrival',
+    isLocked: true // Active rentals are effectively locked
   },
   {
     id: 'e2',
     type: EventType.BOOKING_ASSIGNED,
     groupId: 'g1',
-    vehicleId: 'v2', // 2382
+    vehicleId: 'v2', // 2382 (Narita)
     startDate: addDays(1),
     endDate: addDays(5),
     customerName: 'John Smith',
     reservationId: 'RES-1002',
-    status: 'Confirmed',
-    pickupLocation: 'Narita T2',
+    status: 'Confirmed', // This is PRE-ASSIGNED / LOCKED
+    isLocked: true, // <--- LOCKED EXAMPLE
+    pickupLocation: 'Haneda',
     dropoffLocation: 'Haneda',
+    notes: 'Inventory Share'
   },
   {
     id: 'e3',
@@ -149,6 +160,7 @@ export const MOCK_EVENTS: FleetEvent[] = [
     customerName: 'Suzuki K.',
     reservationId: 'RES-1004',
     status: 'Confirmed',
+    isLocked: false, // <--- SOFT BOOKED / FLOATING EXAMPLE (Standard)
     pickupLocation: 'Narita T1',
     dropoffLocation: 'Narita T1',
     notes: 'Child seat x1'
@@ -223,6 +235,7 @@ export const MOCK_EVENTS: FleetEvent[] = [
     status: 'Picked Up',
     pickupLocation: 'Narita T1',
     dropoffLocation: 'Narita T2',
+    isLocked: true,
   },
 
   // --- Queue (Pending) STACKED ---

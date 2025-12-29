@@ -44,6 +44,9 @@ export interface FleetEvent {
   pickupLocation?: string;
   dropoffLocation?: string;
   
+  // Locking mechanism (New)
+  isLocked?: boolean; // If true, the event is pinned to the vehicle and cannot be auto-optimized or dragged
+
   // Booking specific
   modelPreference?: string; // The model requested by customer (e.g. "Toyota Yaris")
 
@@ -62,6 +65,7 @@ export interface FleetEvent {
 export interface EventModalProps {
   event: FleetEvent | null;
   onClose: () => void;
+  onUpdate: (updatedEvent: FleetEvent) => void; // New callback
   getVehicle: (id: string | null) => Vehicle | undefined;
   getGroup: (id: string) => CarGroup | undefined;
 }

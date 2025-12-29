@@ -1,9 +1,10 @@
+
 import React from 'react';
-import { X, User, Calendar, MapPin, Wrench, AlertTriangle, FileText, Lock } from 'lucide-react';
+import { X, User, Calendar, MapPin, Wrench, AlertTriangle, FileText, Lock, Unlock } from 'lucide-react';
 import { EventModalProps, EventType } from '../types';
 import { EVENT_LABELS } from '../constants';
 
-const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, getVehicle, getGroup }) => {
+const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, onUpdate, getVehicle, getGroup }) => {
   if (!event) return null;
 
   const vehicle = getVehicle(event.vehicleId);
@@ -11,6 +12,18 @@ const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, getVehicl
 
   // Format Date Helper
   const fmt = (d: string) => new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  // Handle Lock Toggle
+  const toggleLock = () => {
+    onUpdate({
+      ...event,
+      isLocked: !event.isLocked
+    });
+  };
+
+  const isLocked = !!event.isLocked;
+  // Only allow locking for Assigned Bookings (conceptually makes most sense, though maintenance could be locked too)
+  const canLock = event.type === EventType.BOOKING_ASSIGNED; 
 
   // Render different content based on event type
   const renderContent = () => {
@@ -22,11 +35,16 @@ const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, getVehicl
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-gray-400 text-xs uppercase font-bold">Res ID</label>
-                <div className="font-mono text-lg font-semibold">{event.reservationId}</div>
+                <div className="font-mono text-lg font-semibold flex items-center gap-2">
+                   {event.reservationId}
+                   {isLocked && <Lock size={14} className="text-blue-400" />}
+                </div>
               </div>
               <div>
                 <label className="text-gray-400 text-xs uppercase font-bold">Status</label>
-                <div className="font-semibold text-blue-200">{event.status}</div>
+                <div className={`font-semibold ${isLocked ? 'text-blue-300' : 'text-blue-200'}`}>
+                  {isLocked ? 'Locked / Pre-assigned' : (event.status || 'Confirmed')}
+                </div>
               </div>
             </div>
 
@@ -135,7 +153,7 @@ const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, getVehicl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div 
         className="bg-slate-900 text-white w-full max-w-lg rounded-xl shadow-2xl overflow-hidden border border-slate-700 animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
@@ -156,9 +174,24 @@ const EventDetailModal: React.FC<EventModalProps> = ({ event, onClose, getVehicl
             <h2 className="text-xl font-bold">{group?.name}</h2>
             {vehicle && <div className="text-sm text-slate-400">{vehicle.model} • {vehicle.color}</div>}
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-white">
-            <X size={20} />
-          </button>
+          
+          <div className="flex gap-2">
+             {/* Lock Button */}
+             {canLock && (
+                <button 
+                  onClick={toggleLock}
+                  className={`p-2 rounded transition-colors flex items-center gap-2 border ${isLocked ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-400 hover:text-white'}`}
+                  title={isLocked ? "Unlock Vehicle" : "Lock Vehicle (Prevent optimization)"}
+                >
+                    {isLocked ? <Lock size={18} /> : <Unlock size={18} />}
+                    <span className="text-xs font-bold uppercase hidden sm:inline">{isLocked ? 'Locked' : 'Unlock'}</span>
+                </button>
+             )}
+
+             <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded transition-colors text-slate-400 hover:text-white">
+                <X size={20} />
+             </button>
+          </div>
         </div>
 
         {/* Body */}
