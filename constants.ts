@@ -4,7 +4,7 @@ import { CarGroup, EventType, FleetEvent, Vehicle } from "./types";
 // Configuration
 export const CELL_WIDTH = 140; 
 export const CELL_WIDTH_HOUR = 60;
-export const HEADER_HEIGHT = 54; 
+export const HEADER_HEIGHT = 66; // Increased height for utilization stats
 export const ROW_HEIGHT_STD = 50; // Reduced from 60 for compaction
 export const EVENT_HEIGHT = 40;   // Slight reduction to fit new row height
 export const EVENT_GAP = 4;
@@ -85,8 +85,8 @@ export const MOCK_VEHICLES: Vehicle[] = [
   { id: 'v4', plate: '成田300わ2427', model: 'Toyota Yaris', sipp: 'ECMR', color: 'Black', groupId: 'g1', status: 'available', storeId: 'Narita' },
   { id: 'v5', plate: '成田300わ2435', model: 'Toyota Yaris', sipp: 'ECMR', color: 'White', groupId: 'g1', status: 'backup', storeId: 'Narita', features: ['snow_tires'] }, 
   
-  // VIRTUAL RESOURCE (3rd Party Pool)
-  { id: 'v_virt_1', plate: 'Third-party Pool', model: 'Ext. Provider', sipp: 'ECMR', color: 'Mixed', groupId: 'g1', status: 'available', storeId: 'Narita', isVirtual: true },
+  // VIRTUAL RESOURCE (Swap Buffer for Group A)
+  { id: 'v_buffer_g1', plate: '⇄ Swap Buffer', model: 'Temporary Holding', sipp: '----', color: '', groupId: 'g1', status: 'available', storeId: 'Narita', isVirtual: true },
 
   // --- Group 2: Compact ---
   { id: 'v6', plate: '成田300わ2438', model: 'Toyota Corolla', sipp: 'CDAR', color: 'Black', groupId: 'g2', status: 'available', storeId: 'Narita', features: ['telematics'] },
@@ -94,6 +94,9 @@ export const MOCK_VEHICLES: Vehicle[] = [
   { id: 'v8', plate: '成田300わ2443', model: 'Mazda 3', sipp: 'CDMR', color: 'Silver', groupId: 'g2', status: 'available', storeId: 'Narita' },
   { id: 'v9', plate: '成田300わ2444', model: 'Honda Civic', sipp: 'CDAR', color: 'White', groupId: 'g2', status: 'backup', storeId: 'Narita' },
   
+  // VIRTUAL RESOURCE (Swap Buffer for Group B)
+  { id: 'v_buffer_g2', plate: '⇄ Swap Buffer', model: 'Temporary Holding', sipp: '----', color: '', groupId: 'g2', status: 'available', storeId: 'Narita', isVirtual: true },
+
   // --- Group 3: SUV ---
   { id: 'v10', plate: '成田300わ2463', model: 'Toyota RAV4', sipp: 'IFAR', color: 'Grey', groupId: 'g3', status: 'available', storeId: 'Narita', features: ['snow_tires', 'telematics'] },
   { id: 'v11', plate: '成田300わ2507', model: 'Toyota RAV4', sipp: 'IFAR', color: 'Black', groupId: 'g3', status: 'available', storeId: 'Narita' },
@@ -164,50 +167,6 @@ export const MOCK_EVENTS: FleetEvent[] = [
     pickupLocation: 'Narita T1',
     dropoffLocation: 'Narita T1',
     notes: 'Child seat x1'
-  },
-
-  // --- VIRTUAL VEHICLE EVENTS (Stacked) ---
-  // Overlapping 1
-  {
-    id: 'e_virt_1',
-    type: EventType.BOOKING_ASSIGNED,
-    groupId: 'g1',
-    vehicleId: 'v_virt_1',
-    startDate: addDays(0),
-    endDate: addDays(3),
-    customerName: 'External Cust A',
-    reservationId: 'EXT-9901',
-    status: 'Confirmed',
-    pickupLocation: 'Narita T1',
-    dropoffLocation: 'Narita T1',
-  },
-  // Overlapping 2 (Same time as above)
-  {
-    id: 'e_virt_2',
-    type: EventType.BOOKING_ASSIGNED,
-    groupId: 'g1',
-    vehicleId: 'v_virt_1',
-    startDate: addDays(0),
-    endDate: addDays(4),
-    customerName: 'External Cust B',
-    reservationId: 'EXT-9902',
-    status: 'Confirmed',
-    pickupLocation: 'Narita T1',
-    dropoffLocation: 'Narita T1',
-  },
-  // Overlapping 3 (Staggered)
-  {
-    id: 'e_virt_3',
-    type: EventType.BOOKING_ASSIGNED,
-    groupId: 'g1',
-    vehicleId: 'v_virt_1',
-    startDate: addDays(2),
-    endDate: addDays(5),
-    customerName: 'External Cust C',
-    reservationId: 'EXT-9903',
-    status: 'Confirmed',
-    pickupLocation: 'Narita T1',
-    dropoffLocation: 'Narita T2',
   },
 
   // --- Group 2 Events ---

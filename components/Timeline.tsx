@@ -3,7 +3,7 @@ import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { differenceInDays, differenceInHours, addDays, addHours, format, isSameDay, isWeekend, startOfDay, addMinutes } from 'date-fns';
 import { CarGroup, Vehicle, FleetEvent, EventType } from '../types';
 import { CELL_WIDTH, CELL_WIDTH_HOUR, ROW_HEIGHT_STD, EVENT_HEIGHT, EVENT_GAP, HEADER_HEIGHT, getEventColor, checkOverlap } from '../constants';
-import { Snowflake, ChevronLeft, ChevronRight, Layers, NotepadText, ArrowRight, Signal, Share2, Milestone, ChevronDown, Lock } from 'lucide-react';
+import { Snowflake, ChevronLeft, ChevronRight, Layers, NotepadText, ArrowRight, Signal, Share2, Milestone, ChevronDown, Lock, ArrowLeftRight } from 'lucide-react';
 
 interface TimelineProps {
   groups: CarGroup[];
@@ -290,6 +290,31 @@ const Timeline: React.FC<TimelineProps> = ({
       }
   };
 
+  // --- STATS HELPER ---
+  const getDailyUtilization = (date: Date) => {
+    if (viewScale !== 'day') return null;
+
+    // Denominator: Active Fleet (Not virtual, not backup)
+    const activeVehicles = vehicles.filter(v => !v.isVirtual && v.status !== 'backup');
+    const total = activeVehicles.length;
+    if (total === 0) return 0;
+
+    // Numerator: Occupied (Has Booking Assigned overlapping this day)
+    const dayStart = startOfDay(date);
+    const dayEnd = addMinutes(addDays(dayStart, 1), -1);
+    const startStr = dayStart.toISOString();
+    const endStr = dayEnd.toISOString();
+
+    let occupied = 0;
+    activeVehicles.forEach(v => {
+       const vEvents = events.filter(e => e.vehicleId === v.id && e.type === EventType.BOOKING_ASSIGNED);
+       const isOccupied = vEvents.some(e => checkOverlap(e.startDate, e.endDate, startStr, endStr));
+       if (isOccupied) occupied++;
+    });
+
+    return ((occupied / total) * 100).toFixed(2);
+  };
+
   // --- RENDER HELPERS ---
   const getEventStyle = (event: FleetEvent, laneIndex: number) => {
     const eventStart = new Date(event.startDate);
@@ -471,18 +496,22 @@ const Timeline: React.FC<TimelineProps> = ({
                                     </div>
                                 );
                             })}
+                            
+                            {/* VIRTUAL VEHICLES (SWAP BUFFER) - Styled differently */}
                             {virtualVehicles.map(v => {
                                 const layout = rowLayouts.get(v.id);
-                                const count = layout?.eventsWithLanes.length || 0;
                                 return (
-                                    <div key={v.id} style={{ height: layout?.height }} className="flex flex-col justify-center px-3 border-b border-gray-100 bg-slate-50/60 hover:bg-blue-50/20 transition-colors border-l-4 border-l-transparent">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-sm font-mono font-bold text-slate-600 italic truncate">{v.plate}</span>
-                                            {count > 0 && <span className="text-[9px] bg-slate-200 px-1.5 rounded-full text-slate-600 font-bold">{count}</span>}
+                                    <div key={v.id} style={{ height: layout?.height }} className="flex flex-col justify-center px-3 border-b border-gray-100 bg-gray-50/40 relative">
+                                        <div className="absolute inset-x-2 inset-y-2 border-2 border-dashed border-gray-200 rounded flex items-center justify-center">
+                                            <div className="flex items-center gap-1.5 text-gray-400">
+                                                <ArrowLeftRight size={12} />
+                                                <span className="text-[10px] font-bold uppercase tracking-wider">Swap Buffer</span>
+                                            </div>
                                         </div>
                                     </div>
                                 );
                             })}
+
                             {realVehicles.map(v => {
                                 const layout = rowLayouts.get(v.id);
                                 return (
@@ -522,6 +551,8 @@ const Timeline: React.FC<TimelineProps> = ({
                  const isSat = isWeekend(date) && date.getDay() === 6;
                  const isSun = isWeekend(date) && date.getDay() === 0;
                  const isToday = isSameDay(date, new Date());
+                 const utilization = getDailyUtilization(date);
+
                  return (
                    <div 
                      key={i} 
@@ -533,6 +564,13 @@ const Timeline: React.FC<TimelineProps> = ({
                         <div className="flex flex-col items-center justify-center">
                             <span className={`text-[10px] uppercase font-bold tracking-wider leading-tight ${isToday ? 'text-blue-600' : 'text-gray-400'}`}>{format(date, 'EEE')}</span>
                             <span className={`text-xl font-bold leading-none mt-0.5 ${isToday ? 'text-blue-600' : 'text-slate-700'}`}>{format(date, 'd')}</span>
+                            
+                            {/* Daily Utilization Stats */}
+                            {utilization !== null && (
+                                <div className={`mt-1 text-[10px] font-bold ${Number(utilization) < 50 ? 'text-rose-500' : 'text-emerald-600'}`}>
+                                    {utilization}%
+                                </div>
+                            )}
                         </div>
                      ) : (
                         <div className="flex flex-col items-center leading-none">
@@ -574,14 +612,23 @@ const Timeline: React.FC<TimelineProps> = ({
                                         </div>
                                     );
                                 })}
+                                
+                                {/* VIRTUAL VEHICLES (SWAP BUFFER) GRID */}
                                 {virtualVehicles.map(v => {
                                     const layout = rowLayouts.get(v.id);
                                     return (
-                                        <div key={v.id} style={{ height: layout?.height }} className="relative w-full border-b border-transparent pointer-events-auto" onDragOver={(e) => {e.preventDefault(); e.dataTransfer.dropEffect = 'move'}} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('eventId'); if(id && onEventMove) onEventMove(id, v.id); }}>
+                                        <div 
+                                            key={v.id} 
+                                            style={{ height: layout?.height }} 
+                                            className="relative w-full border-b border-gray-100 pointer-events-auto bg-stripes bg-gray-50/30" 
+                                            onDragOver={(e) => {e.preventDefault(); e.dataTransfer.dropEffect = 'move'}} 
+                                            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('eventId'); if(id && onEventMove) onEventMove(id, v.id); }}
+                                        >
                                            {layout?.eventsWithLanes.map(event => renderEventBar(event, event.laneIndex))}
                                         </div>
                                     )
                                 })}
+
                                 {realVehicles.map(v => {
                                     const layout = rowLayouts.get(v.id);
                                     const isSelectedRow = dragSelection?.vehicleId === v.id;

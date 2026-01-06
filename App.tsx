@@ -5,7 +5,7 @@ import {
   LayoutDashboard, ShoppingCart, Car, List, Settings, 
   Menu, Bell, User, Maximize2, Minimize2, RefreshCw, Layers,
   ChevronLeft, ChevronRight, Calendar as CalendarIcon, HelpCircle, ArrowLeft,
-  Milestone, Share2
+  Milestone, Share2, FileText
 } from 'lucide-react';
 import Timeline from './components/Timeline';
 import EventDetailModal from './components/EventDetailModal';
@@ -55,6 +55,7 @@ const App: React.FC = () => {
     source: '', 
     status: '', 
     notes: '',
+    orderId: '', // New Filter
     onlyWithBookings: false,
     oneWayOnly: false,     // New Filter
     crossStoreOnly: false, // New Filter
@@ -191,6 +192,7 @@ const App: React.FC = () => {
       source: '',
       status: '',
       notes: '',
+      orderId: '',
       onlyWithBookings: false,
       oneWayOnly: false,
       crossStoreOnly: false,
@@ -247,7 +249,16 @@ const App: React.FC = () => {
   const filteredEvents = useMemo(() => {
     let visibleEvents = events;
 
-    // A. Text Search Filters
+    // A. ID Search (Reservation ID or Work Order ID/Event ID)
+    if (filters.orderId) {
+        const term = filters.orderId.toLowerCase();
+        visibleEvents = visibleEvents.filter(e => 
+            (e.reservationId && e.reservationId.toLowerCase().includes(term)) || 
+            (e.id && e.id.toLowerCase().includes(term))
+        );
+    }
+
+    // B. Text Search Filters
     if (filters.plate || filters.notes) {
          const term = (filters.plate + filters.notes).toLowerCase();
          visibleEvents = visibleEvents.filter(e => 
@@ -257,7 +268,7 @@ const App: React.FC = () => {
          );
     }
 
-    // B. Status Filters (Legend)
+    // C. Status Filters (Legend)
     if (statusFilters.length > 0) {
       visibleEvents = visibleEvents.filter(e => {
          const status = e.status?.toLowerCase() || '';
@@ -272,7 +283,7 @@ const App: React.FC = () => {
       });
     }
 
-    // C. Special Filters (One-Way / Cross-Store) for PENDING events
+    // D. Special Filters (One-Way / Cross-Store) for PENDING events
     // For assigned events, the vehicle filtering handles the rows, but we generally keep the events visible for context.
     // However, for Unassigned (Pending) events, we must filter them explicitly here.
     if (filters.oneWayOnly) {
@@ -285,11 +296,6 @@ const App: React.FC = () => {
     }
     
     if (filters.crossStoreOnly) {
-        // Cross store concept applies less to Pending (as they aren't assigned to a home store yet), 
-        // unless we strictly filter "Pending" orders where pickup != dropoff? No, that's one-way.
-        // Usually Cross-Store is an operational risk of assigning a specific car.
-        // For Pending, we might hide them if we are strictly looking for operational risks on existing fleet.
-        // Let's hide pending events if CrossStoreOnly is checked, as they don't have a "Home Store" to conflict with yet.
          visibleEvents = visibleEvents.filter(e => {
             if (e.type === EventType.BOOKING_UNASSIGNED) {
                 return false; 
@@ -474,6 +480,20 @@ const App: React.FC = () => {
                             className="w-full h-[36px] pl-3 pr-8 text-xs border border-gray-300 rounded text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white shadow-sm"
                           />
                            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none opacity-50" />
+                       </div>
+                    </div>
+                    
+                    <div className="w-[180px]">
+                       <FilterLabel>ORDER / WORK ID</FilterLabel>
+                       <div className="relative">
+                          <input 
+                            type="text" 
+                            placeholder="Res / Work ID"
+                            value={filters.orderId}
+                            onChange={(e) => setFilters({...filters, orderId: e.target.value})}
+                            className="w-full h-[36px] pl-3 pr-8 text-xs border border-gray-300 rounded text-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white shadow-sm"
+                          />
+                           <FileText size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none opacity-50" />
                        </div>
                     </div>
 
