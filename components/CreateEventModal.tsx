@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, Clock, AlertCircle, Wrench, ShieldCheck, User } from 'lucide-react';
+import { X, Calendar, Clock, AlertCircle, Wrench, ShieldCheck, Lock } from 'lucide-react';
 import { Vehicle, EventType, FleetEvent } from '../types';
 import { differenceInDays, differenceInHours, format } from 'date-fns';
 
@@ -16,7 +16,7 @@ interface CreateEventModalProps {
 }
 
 const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, onConfirm, initialData }) => {
-  const [type, setType] = useState<'INTERNAL' | 'MAINTENANCE' | 'VIP'>('INTERNAL');
+  const [type, setType] = useState<'INTERNAL' | 'MAINTENANCE' | 'OPERATIONS'>('MAINTENANCE');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -27,7 +27,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
       // Format for datetime-local input: YYYY-MM-DDThh:mm
       setStartDate(format(initialData.startDate, "yyyy-MM-dd'T'HH:mm"));
       setEndDate(format(initialData.endDate, "yyyy-MM-dd'T'HH:mm"));
-      setType('INTERNAL');
+      setType('MAINTENANCE');
       setNotes('');
     }
   }, [isOpen, initialData]);
@@ -62,15 +62,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
     switch (type) {
       case 'INTERNAL':
         eventType = EventType.BLOCK;
-        reason = 'Internal Use';
+        reason = 'Internal Use'; // 内部使用
         break;
       case 'MAINTENANCE':
         eventType = EventType.MAINTENANCE;
-        maintType = 'Repair';
+        maintType = 'Repair/Maintenance'; // 维修/保养
         break;
-      case 'VIP':
+      case 'OPERATIONS':
         eventType = EventType.BLOCK;
-        reason = 'VIP Reservation';
+        reason = 'Operation Lock'; // 运营锁定
         break;
     }
 
@@ -83,7 +83,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
       status: 'Active',
       notes: notes,
       vehicleId: vehicle.id,
-      groupId: vehicle.groupId
+      groupId: vehicle.groupId,
+      isLocked: type === 'OPERATIONS' // Auto-lock for operational holds
     };
 
     onConfirm(newEvent);
@@ -122,6 +123,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
             <label className="text-sm font-bold text-gray-700 mb-3 block">预占类型 (Type)</label>
             <div className="grid grid-cols-3 gap-3">
               <button 
+                onClick={() => setType('MAINTENANCE')}
+                className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${type === 'MAINTENANCE' ? 'bg-orange-50 border-orange-500 text-orange-700 ring-1 ring-orange-500' : 'bg-white border-gray-200 hover:border-orange-300 text-gray-600'}`}
+              >
+                <Wrench size={20} className="mb-2" />
+                <span className="text-xs font-medium">Repair/Maint</span>
+                <span className="text-[10px] text-gray-400 scale-90">维修/保养</span>
+              </button>
+
+              <button 
                 onClick={() => setType('INTERNAL')}
                 className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${type === 'INTERNAL' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white border-gray-200 hover:border-blue-300 text-gray-600'}`}
               >
@@ -131,21 +141,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
               </button>
               
               <button 
-                onClick={() => setType('MAINTENANCE')}
-                className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${type === 'MAINTENANCE' ? 'bg-orange-50 border-orange-500 text-orange-700 ring-1 ring-orange-500' : 'bg-white border-gray-200 hover:border-orange-300 text-gray-600'}`}
+                onClick={() => setType('OPERATIONS')}
+                className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${type === 'OPERATIONS' ? 'bg-purple-50 border-purple-500 text-purple-700 ring-1 ring-purple-500' : 'bg-white border-gray-200 hover:border-purple-300 text-gray-600'}`}
               >
-                <Wrench size={20} className="mb-2" />
-                <span className="text-xs font-medium">Repair</span>
-                <span className="text-[10px] text-gray-400 scale-90">维修</span>
-              </button>
-              
-              <button 
-                onClick={() => setType('VIP')}
-                className={`flex flex-col items-center justify-center p-3 rounded-lg border transition-all ${type === 'VIP' ? 'bg-purple-50 border-purple-500 text-purple-700 ring-1 ring-purple-500' : 'bg-white border-gray-200 hover:border-purple-300 text-gray-600'}`}
-              >
-                <User size={20} className="mb-2" />
-                <span className="text-xs font-medium">VIP Reserve</span>
-                <span className="text-[10px] text-gray-400 scale-90">客户预留</span>
+                <Lock size={20} className="mb-2" />
+                <span className="text-xs font-medium">Ops Lock</span>
+                <span className="text-[10px] text-gray-400 scale-90">运营锁定</span>
               </button>
             </div>
           </div>
@@ -188,7 +189,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, on
             <textarea 
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="请输入 (Optional inputs...)"
+              placeholder="请输入备注 / Enter notes..."
               className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 h-24 resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-shadow bg-gray-50 focus:bg-white"
             />
           </div>

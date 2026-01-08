@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { 
   Search, RotateCcw, ChevronDown, CheckCircle2, 
@@ -10,6 +11,8 @@ import {
 import Timeline from './components/Timeline';
 import EventDetailModal from './components/EventDetailModal';
 import CreateEventModal from './components/CreateEventModal';
+import EventContextMenu from './components/EventContextMenu';
+import AssignVehicleModal from './components/AssignVehicleModal';
 import { MOCK_EVENTS, MOCK_GROUPS, MOCK_VEHICLES, checkOverlap } from './constants';
 import { FleetEvent, EventType, Vehicle } from './types';
 import { addDays, subDays, format, differenceInHours, startOfDay, differenceInDays } from 'date-fns';
@@ -36,6 +39,14 @@ const App: React.FC = () => {
   const [viewScale, setViewScale] = useState<'day' | 'hour'>('day'); 
   const [selectedEvent, setSelectedEvent] = useState<FleetEvent | null>(null);
   
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    event: FleetEvent | null;
+  }>({ isOpen: false, x: 0, y: 0, event: null });
+  
   // Layout State
   const [isMaximized, setIsMaximized] = useState(false);
 
@@ -45,6 +56,12 @@ const App: React.FC = () => {
     startDate: Date;
     endDate: Date;
   } | null>(null);
+
+  // Assign Vehicle Modal State
+  const [assignModalData, setAssignModalData] = useState<{
+    isOpen: boolean;
+    event: FleetEvent | null;
+  }>({ isOpen: false, event: null });
 
   // Filter States
   const [filters, setFilters] = useState({
@@ -98,12 +115,12 @@ const App: React.FC = () => {
   };
 
   // Move / Reassign Handler (Drag and Drop)
-  const handleEventMove = (eventId: string, newVehicleId: string, newStart?: string, newEnd?: string) => {
+  const handleEventMove = (eventId: string, newVehicleId: string | null, newStart?: string, newEnd?: string) => {
     setEvents(prev => prev.map(e => {
         if (e.id !== eventId) return e;
         
         // Cannot move locked events via DnD (though the UI should prevent the drag initiation too)
-        if (e.isLocked) return e; 
+        if (e.isLocked && newVehicleId !== null) return e; 
 
         const updatedEvent = { ...e, vehicleId: newVehicleId };
         
@@ -111,6 +128,12 @@ const App: React.FC = () => {
         if (e.type === EventType.BOOKING_UNASSIGNED && newVehicleId) {
              updatedEvent.type = EventType.BOOKING_ASSIGNED;
              updatedEvent.status = 'Confirmed';
+        }
+        
+        // If moving back to unassigned (Reassign Action)
+        if (newVehicleId === null) {
+            updatedEvent.type = EventType.BOOKING_UNASSIGNED;
+            updatedEvent.status = 'Pending Assignment';
         }
 
         // Update times if provided
@@ -121,6 +144,60 @@ const App: React.FC = () => {
 
         return updatedEvent;
     }));
+  };
+
+  // Manual Assignment Confirmation Handler
+  const handleAssignVehicleConfirm = (vehicleId: string) => {
+     if (assignModalData.event) {
+        handleEventMove(assignModalData.event.id, vehicleId);
+     }
+     setAssignModalData({ isOpen: false, event: null });
+  };
+  
+  // Event Click Handling Logic
+  const handleEventClick = (event: FleetEvent, e: React.MouseEvent) => {
+     const isReservation = event.type === EventType.BOOKING_ASSIGNED || event.type === EventType.BOOKING_UNASSIGNED;
+     
+     if (isReservation) {
+        // Show Context Menu for Reservations
+        // Calculate a safe position (simple logic for now)
+        let x = e.clientX;
+        let y = e.clientY;
+        
+        // Prevent going off screen right
+        if (x > window.innerWidth - 200) x = window.innerWidth - 200;
+        
+        setContextMenu({ isOpen: true, x, y, event });
+     } else {
+        // Directly open detail for other types
+        setSelectedEvent(event);
+     }
+  };
+
+  const handleContextMenuAction = (action: 'LOCK' | 'DETAILS' | 'NOTES' | 'ASSIGN', event: FleetEvent) => {
+      setContextMenu({ ...contextMenu, isOpen: false });
+
+      switch(action) {
+          case 'LOCK':
+             // Toggle Lock
+             handleEventUpdate({ ...event, isLocked: !event.isLocked });
+             break;
+          case 'DETAILS':
+             setSelectedEvent(event);
+             break;
+          case 'NOTES':
+             // Using prompt for quick note editing as per request for "Add Notes" capability
+             const currentNote = event.notes || '';
+             const newNote = window.prompt("请输入订单备注 (Order Notes):", currentNote);
+             if (newNote !== null) {
+                 handleEventUpdate({ ...event, notes: newNote });
+             }
+             break;
+          case 'ASSIGN':
+             // Open Assignment Modal
+             setAssignModalData({ isOpen: true, event });
+             break;
+      }
   };
 
   // Navigation Handlers
@@ -306,48 +383,6 @@ const App: React.FC = () => {
 
     return visibleEvents;
   }, [filters, filteredVehicles, statusFilters, events]);
-
-  const kpiData = useMemo(() => {
-    const now = new Date();
-    const startWindow = currentDate;
-    const endWindow = addDays(currentDate, daysToShow);
-    const totalHoursInWindow = differenceInHours(endWindow, startWindow);
-
-    let vehiclesAvailableToday = 0;
-    let totalRevenueHours = 0;
-    
-    filteredVehicles.forEach(v => {
-      if (!v.isVirtual) {
-        const vehicleEvents = events.filter(e => e.vehicleId === v.id);
-        const isBlockedNow = vehicleEvents.some(e => {
-            const isActive = e.status !== 'Completed' && e.status !== 'Returned';
-            const isHappening = checkOverlap(e.startDate, e.endDate, now.toISOString(), addDays(now, 0.01).toISOString()); 
-            return isActive && isHappening;
-        });
-        if (!isBlockedNow) vehiclesAvailableToday++;
-
-        let hoursOccupied = 0;
-        vehicleEvents.forEach(e => {
-            if (e.type === EventType.BOOKING_ASSIGNED && checkOverlap(e.startDate, e.endDate, startWindow.toISOString(), endWindow.toISOString())) {
-              const start = new Date(e.startDate) < startWindow ? startWindow : new Date(e.startDate);
-              const end = new Date(e.endDate) > endWindow ? endWindow : new Date(e.endDate);
-              const dur = differenceInHours(end, start);
-              if (dur > 0) hoursOccupied += dur;
-            }
-        });
-        totalRevenueHours += hoursOccupied;
-      }
-    });
-
-    const realVehicles = filteredVehicles.filter(v => !v.isVirtual);
-    const totalCapacityHours = realVehicles.length * totalHoursInWindow;
-    const utilization = totalCapacityHours > 0 ? (totalRevenueHours / totalCapacityHours) * 100 : 0;
-
-    return {
-      available: vehiclesAvailableToday,
-      utilization: utilization.toFixed(2),
-    };
-  }, [filteredVehicles, currentDate, daysToShow, events]);
 
   return (
     <div className="flex h-screen bg-[#f1f5f9] font-sans text-slate-800 overflow-hidden">
@@ -633,20 +668,6 @@ const App: React.FC = () => {
 
                   {/* Right: Stats & Maximize */}
                   <div className="flex items-center gap-6 text-xs text-gray-600">
-                     <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Available Vehicles</span>
-                        <span className="font-bold text-gray-900 text-sm">{kpiData.available}</span>
-                     </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Utilization</span>
-                        <span className="font-bold text-gray-900 text-sm">{kpiData.utilization}%</span>
-                     </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Order STD Dev</span>
-                        <span className="font-bold text-gray-900 text-sm">3.15</span>
-                     </div>
-                     
-                     <div className="w-px h-4 bg-gray-300"></div>
                      
                      {/* Maximize Toggle */}
                      <button 
@@ -669,7 +690,7 @@ const App: React.FC = () => {
                            startDate={addDays(currentDate, -1)}
                            daysToShow={daysToShow}
                            viewScale={viewScale}
-                           onEventClick={setSelectedEvent}
+                           onEventClick={handleEventClick} // CHANGED: Now handles logic split
                            onDateClick={handleDateClickFromTimeline}
                            selectedStatusFilters={statusFilters}
                            toggleStatusFilter={toggleStatusFilter}
@@ -682,6 +703,15 @@ const App: React.FC = () => {
 
          </div>
       </div>
+
+      {/* Context Menu */}
+      <EventContextMenu 
+         isOpen={contextMenu.isOpen}
+         position={{ x: contextMenu.x, y: contextMenu.y }}
+         event={contextMenu.event}
+         onClose={() => setContextMenu({...contextMenu, isOpen: false})}
+         onAction={handleContextMenuAction}
+      />
 
       {/* Modals */}
       {selectedEvent && (
@@ -698,6 +728,16 @@ const App: React.FC = () => {
         onClose={() => setCreateModalData(null)}
         onConfirm={handleCreateEvent}
         initialData={createModalData}
+      />
+      
+      {/* Assign Vehicle Modal */}
+      <AssignVehicleModal
+         isOpen={assignModalData.isOpen}
+         event={assignModalData.event}
+         vehicles={MOCK_VEHICLES} // Pass all vehicles or filteredVehicles
+         groups={MOCK_GROUPS}
+         onClose={() => setAssignModalData({isOpen: false, event: null})}
+         onConfirm={handleAssignVehicleConfirm}
       />
     </div>
   );

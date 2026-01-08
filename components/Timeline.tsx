@@ -1,9 +1,11 @@
 
+
 import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { differenceInDays, differenceInHours, addDays, addHours, format, isSameDay, isWeekend, startOfDay, addMinutes } from 'date-fns';
 import { CarGroup, Vehicle, FleetEvent, EventType } from '../types';
 import { CELL_WIDTH, CELL_WIDTH_HOUR, ROW_HEIGHT_STD, EVENT_HEIGHT, EVENT_GAP, HEADER_HEIGHT, getEventColor, checkOverlap } from '../constants';
-import { Snowflake, ChevronLeft, ChevronRight, Layers, NotepadText, ArrowRight, Signal, Share2, Milestone, ChevronDown, Lock, ArrowLeftRight } from 'lucide-react';
+import { Snowflake, ChevronLeft, ChevronRight, Layers, NotepadText, ArrowRight, Signal, Share2, Milestone, ChevronDown, Lock, ArrowLeftRight, GripVertical, FileText } from 'lucide-react';
+import MoveConfirmModal from './MoveConfirmModal';
 
 interface TimelineProps {
   groups: CarGroup[];
@@ -12,7 +14,7 @@ interface TimelineProps {
   startDate: Date;
   daysToShow: number;
   viewScale: 'day' | 'hour';
-  onEventClick: (event: FleetEvent) => void;
+  onEventClick: (event: FleetEvent, e: React.MouseEvent) => void;
   onDateClick: (date: Date) => void;
   onRangeSelect?: (vehicle: Vehicle, start: Date, end: Date) => void;
   onEventMove?: (eventId: string, newVehicleId: string, newStart?: string, newEnd?: string) => void;
@@ -71,6 +73,18 @@ const Timeline: React.FC<TimelineProps> = ({
     isDragging: boolean;
   } | null>(null);
 
+  // Dragging Event State
+  const [isDraggingEvent, setIsDraggingEvent] = useState(false);
+  
+  // Confirmation Modal State
+  const [moveConfirmState, setMoveConfirmState] = useState<{
+    isOpen: boolean;
+    eventId: string;
+    targetVehicleId: string;
+    sourceVehicleId: string;
+    event: FleetEvent | null;
+  }>({ isOpen: false, eventId: '', targetVehicleId: '', sourceVehicleId: '', event: null });
+
   // --- HANDLERS ---
 
   const toggleGroup = (groupId: string) => {
@@ -80,6 +94,13 @@ const Timeline: React.FC<TimelineProps> = ({
       else next.add(groupId);
       return next;
     });
+  };
+
+  const handleConfirmMove = () => {
+     if (onEventMove && moveConfirmState.event) {
+        onEventMove(moveConfirmState.eventId, moveConfirmState.targetVehicleId);
+     }
+     setMoveConfirmState(prev => ({ ...prev, isOpen: false }));
   };
 
   // --- LAYOUT ENGINE ---
@@ -349,29 +370,59 @@ const Timeline: React.FC<TimelineProps> = ({
   };
 
   const renderEventBar = (event: FleetEvent, laneIndex: number) => {
+     const assignedVehicle = vehicles.find(v => v.id === event.vehicleId);
      const { left, width, top, height, rawWidth, rawLeft } = getEventStyle(event, laneIndex);
      const isTiny = rawWidth < 60;
+     const isSmall = rawWidth < 120;
      const isCroppedLeft = rawLeft < 0; 
      const isCroppedRight = rawLeft + rawWidth > totalContentWidth;
-     const colorClass = getEventColor(event);
-     const hasNotes = event.notes && event.notes.length > 0;
+     const colorClass = getEventColor(event, assignedVehicle); // PASS VEHICLE FOR CROSS STORE LOGIC
      const isLocked = !!event.isLocked;
      const isMaintenance = event.type === EventType.MAINTENANCE;
+     const hasNotes = !!event.notes; // Check for notes
 
-     const t = (d: string) => format(new Date(d), 'HH:mm');
-     const s = new Date(event.startDate);
-     const e = new Date(event.endDate);
-     const diffHrs = differenceInHours(e, s);
-     const diffDays = Math.ceil(diffHrs / 24);
-     const durationLabel = diffHrs < 24 ? `${diffHrs}h` : `${diffDays}d`;
+     // Data formatting
+     const startTime = format(new Date(event.startDate), 'HH:mm');
+     const endTime = format(new Date(event.endDate), 'HH:mm');
+     const diffHrs = differenceInHours(new Date(event.endDate), new Date(event.startDate));
+     const diffDays = (diffHrs / 24).toFixed(1);
+     const durationLabel = diffHrs < 24 ? `${diffHrs}h` : `${diffDays.replace('.0', '')}d`;
 
-     const assignedVehicle = vehicles.find(v => v.id === event.vehicleId);
      const isOneWay = event.pickupLocation && event.dropoffLocation && (event.pickupLocation !== event.dropoffLocation);
      const isCrossStore = assignedVehicle && !assignedVehicle.isVirtual && event.pickupLocation && !event.pickupLocation.includes(assignedVehicle.storeId);
      const isDraggable = !isLocked && !isMaintenance;
 
-     let tooltip = `${event.type === EventType.BOOKING_ASSIGNED ? (event.reservationId || 'Res') : event.type} | ${durationLabel}`;
-     if (isLocked) tooltip += ` | Locked`;
+     // Main Text Logic
+     let mainText = '';
+     let subText = '';
+     let oneWayDropoffNode = null;
+
+     if (event.type === EventType.BOOKING_ASSIGNED || event.type === EventType.BOOKING_UNASSIGNED) {
+         const id = event.reservationId || 'RES';
+         const pickLoc = event.pickupLocation || '?';
+         const dropLoc = event.dropoffLocation || '?';
+
+         if (isOneWay) {
+            // Highlighting Logic for One Way
+            oneWayDropoffNode = (
+                <span className="flex items-center gap-1">
+                     <ArrowRight size={10} className="text-white drop-shadow-sm opacity-90" />
+                     <span className="bg-white/30 px-1.5 py-0.5 rounded text-white font-extrabold shadow-sm border border-white/20">
+                        {dropLoc} {endTime}
+                     </span>
+                </span>
+            );
+            mainText = `${id} | ${pickLoc} ${startTime}`;
+         } else {
+            mainText = `${id} | ${pickLoc} ${startTime} -> ${endTime}`;
+         }
+         subText = `(${durationLabel})`;
+     } else {
+         mainText = event.maintenanceType || event.reason || 'Event';
+         subText = `(${durationLabel})`;
+     }
+
+     const tooltip = `${mainText} ${isOneWay ? `-> ${event.dropoffLocation}` : ''} ${subText}` + (event.notes ? `\n📝 ${event.notes}` : '');
 
      return (
         <div
@@ -379,15 +430,28 @@ const Timeline: React.FC<TimelineProps> = ({
             draggable={isDraggable}
             onDragStart={(e) => {
                 if (!isDraggable) { e.preventDefault(); return; }
+                e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('eventId', event.id);
                 e.dataTransfer.setData('originalVehicleId', event.vehicleId || '');
+                
+                // IMPORTANT: Delay state update to prevent immediate layout shift which kills the drag operation
+                // when new rows (Swap Buffers) appear above the dragged element.
+                setTimeout(() => setIsDraggingEvent(true), 10);
             }}
-            onDragOver={(e) => e.preventDefault()} // Allow dragging over other events? Usually no, but standard DnD needs it.
-            onClick={(e) => { e.stopPropagation(); onEventClick(event); }}
-            className={`absolute rounded-sm pointer-events-auto cursor-pointer flex items-center px-1.5 overflow-hidden hover:brightness-95 transition-all shadow-sm ${colorClass} event-bar z-10 hover:z-20 ${!isDraggable ? 'cursor-default' : ''}`}
+            onDragEnd={() => {
+                setIsDraggingEvent(false); // END DRAGGING
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                onEventClick(event, e); // PASS EVENT OBJECT HERE
+            }}
+            className={`absolute rounded-sm pointer-events-auto flex items-center px-1.5 overflow-hidden hover:brightness-95 transition-all shadow-sm ${colorClass} event-bar z-10 hover:z-20 group ${!isDraggable ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
             style={{ left, width, top, height }}
             title={tooltip}
         >
+            {isDraggable && <div className="absolute left-1/2 -translate-x-1/2 top-0 opacity-0 group-hover:opacity-50 text-white/80 transition-opacity"><GripVertical size={12} /></div>}
+
             {isCroppedLeft && <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-black/20 to-transparent flex items-center justify-center z-10"><ChevronLeft size={12} className="text-white drop-shadow-md" /></div>}
             {isCroppedRight && <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-black/20 to-transparent flex items-center justify-center z-10"><ChevronRight size={12} className="text-white drop-shadow-md" /></div>}
 
@@ -397,16 +461,15 @@ const Timeline: React.FC<TimelineProps> = ({
                     {!isLocked && <div className="w-1.5 h-1.5 rounded-full bg-white/80 shadow-sm"></div>}
                 </div>
             ) : (
-                <div className={`flex flex-row items-center gap-2 w-full h-full text-[10px] whitespace-nowrap leading-none ${isCroppedLeft ? 'pl-2' : ''} ${isCroppedRight ? 'pr-2' : ''}`}>
-                    {isLocked && <div title="Locked" className="text-white/90"><Lock size={10} /></div>}
-                    {isCrossStore && <div title="Cross-store" className="bg-white/90 text-pink-600 rounded-full p-0.5 shadow-sm"><Share2 size={10} /></div>}
-                    {hasNotes && <NotepadText size={11} className="flex-shrink-0 opacity-90" />}
+                <div className={`flex flex-row items-center gap-1 w-full h-full text-[10px] whitespace-nowrap leading-none ${isCroppedLeft ? 'pl-2' : ''} ${isCroppedRight ? 'pr-2' : ''}`}>
+                    {isLocked && <div title="Locked" className="text-white/90 flex-shrink-0"><Lock size={10} /></div>}
+                    {isCrossStore && <div title="Cross-store (Different Pickup)" className="bg-white/90 text-teal-600 rounded-full p-0.5 shadow-sm flex-shrink-0"><Share2 size={10} /></div>}
+                    {hasNotes && <div title={event.notes} className="text-white/90 flex-shrink-0"><FileText size={10} /></div>}
                     
-                    <div className="flex items-center gap-1.5 truncate">
-                         <span className="font-bold">{event.reservationId || event.maintenanceType || event.reason}</span>
-                         <span className="opacity-60">|</span>
-                         <span className="font-medium truncate">{event.pickupLocation || event.mechanic}</span>
-                         <span className="font-mono opacity-80 bg-white/20 px-1 rounded-sm">({durationLabel})</span>
+                    <div className="flex items-center gap-1 overflow-hidden">
+                         <span className="font-bold flex-shrink-0 text-shadow-sm">{mainText}</span>
+                         {oneWayDropoffNode}
+                         {!isSmall && <span className="font-mono opacity-80 bg-white/20 px-1 rounded-sm flex-shrink-0 scale-90">{subText}</span>}
                     </div>
                 </div>
             )}
@@ -424,8 +487,35 @@ const Timeline: React.FC<TimelineProps> = ({
      return `${format(activeStartDate, 'MMM d')} - ${format(endDate, 'MMM d')}`;
   }, [activeStartDate, daysToShow]);
 
+  // Handle Drop Logic with Confirmation
+  const handleDropOnVehicle = (e: React.DragEvent, targetVehicleId: string) => {
+      e.preventDefault();
+      const eventId = e.dataTransfer.getData('eventId');
+      const originalVehicleId = e.dataTransfer.getData('originalVehicleId');
+      
+      if (eventId) {
+          const event = events.find(ev => ev.id === eventId) || null;
+          const targetVehicle = vehicles.find(v => v.id === targetVehicleId) || null;
+          
+          if (targetVehicleId !== originalVehicleId) {
+             setMoveConfirmState({
+                 isOpen: true,
+                 eventId,
+                 targetVehicleId,
+                 sourceVehicleId: originalVehicleId,
+                 event
+             });
+          } else {
+             // If dropping on same vehicle, assume it might be a date shift handled by logic not fully implemented here
+             // but let's just trigger the callback directly for same-vehicle drops
+             if(onEventMove) onEventMove(eventId, targetVehicleId);
+          }
+      }
+      setIsDraggingEvent(false);
+  };
 
   return (
+    <>
     <div className="flex flex-col h-full bg-white border border-gray-200 rounded-sm shadow-sm overflow-hidden select-none ring-1 ring-gray-950/5">
       
       {/* Top Sync Scrollbar */}
@@ -447,9 +537,10 @@ const Timeline: React.FC<TimelineProps> = ({
         >
           {/* COLUMN 1: SIDEBAR */}
           <div 
-             className="sticky left-0 z-40 flex-shrink-0 bg-white border-r border-gray-200 pointer-events-auto shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]" 
+             className="sticky left-0 z-50 flex-shrink-0 bg-white border-r border-gray-200 pointer-events-auto shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]" 
              style={{ width: SIDEBAR_WIDTH }}
           >
+             {/* Sticky Header for Sidebar - Matches Grid Header Height and Position */}
              <div style={{ height: HEADER_HEIGHT }} className="sticky top-0 z-50 bg-white border-b border-gray-200 flex items-center justify-between px-3 shadow-sm">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Resource</span>
@@ -465,14 +556,21 @@ const Timeline: React.FC<TimelineProps> = ({
                {groups.map(group => {
                  const groupVehicles = vehiclesByGroup[group.id] || [];
                  const realVehicles = groupVehicles.filter(v => !v.isVirtual);
-                 const virtualVehicles = groupVehicles.filter(v => !!v.isVirtual);
+                 
+                 // FILTER: Only show virtual vehicles if dragging OR if they have assigned events
+                 const virtualVehicles = groupVehicles.filter(v => {
+                    if (!v.isVirtual) return false;
+                    const hasEvents = events.some(e => e.vehicleId === v.id);
+                    return isDraggingEvent || hasEvents;
+                 });
+                 
                  const queueKeys = pendingQueuesByGroup.get(group.id) || [];
                  const isCollapsed = collapsedGroups.has(group.id);
 
                  return (
                    <div key={group.id}>
                      <div 
-                        className="bg-slate-50 px-3 py-1.5 border-y border-gray-200 flex items-center justify-between sticky top-[54px] z-30 shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" 
+                        className="bg-slate-50 px-3 py-1.5 border-y border-gray-200 flex items-center justify-between sticky z-30 shadow-sm cursor-pointer hover:bg-slate-100 transition-colors" 
                         style={{ top: HEADER_HEIGHT }}
                         onClick={() => toggleGroup(group.id)}
                      >
@@ -497,21 +595,6 @@ const Timeline: React.FC<TimelineProps> = ({
                                 );
                             })}
                             
-                            {/* VIRTUAL VEHICLES (SWAP BUFFER) - Styled differently */}
-                            {virtualVehicles.map(v => {
-                                const layout = rowLayouts.get(v.id);
-                                return (
-                                    <div key={v.id} style={{ height: layout?.height }} className="flex flex-col justify-center px-3 border-b border-gray-100 bg-gray-50/40 relative">
-                                        <div className="absolute inset-x-2 inset-y-2 border-2 border-dashed border-gray-200 rounded flex items-center justify-center">
-                                            <div className="flex items-center gap-1.5 text-gray-400">
-                                                <ArrowLeftRight size={12} />
-                                                <span className="text-[10px] font-bold uppercase tracking-wider">Swap Buffer</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-
                             {realVehicles.map(v => {
                                 const layout = rowLayouts.get(v.id);
                                 return (
@@ -534,6 +617,23 @@ const Timeline: React.FC<TimelineProps> = ({
                                     </div>
                                 );
                             })}
+
+                            {/* VIRTUAL VEHICLES (SWAP BUFFER) - MOVED TO BOTTOM */}
+                            {virtualVehicles.map(v => {
+                                const layout = rowLayouts.get(v.id);
+                                const hasEvents = events.some(e => e.vehicleId === v.id);
+                                
+                                return (
+                                    <div key={v.id} style={{ height: layout?.height }} className="flex flex-col justify-center px-3 border-b border-gray-100 bg-amber-50/10 relative animate-in slide-in-from-top-2 fade-in duration-200">
+                                        <div className="flex items-center justify-between">
+                                             <div className="flex items-center gap-1.5 text-amber-600">
+                                                 <ArrowLeftRight size={12} />
+                                                 <span className="text-[10px] font-bold uppercase tracking-wider">Swap Buffer</span>
+                                             </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                      )}
                    </div>
@@ -545,8 +645,8 @@ const Timeline: React.FC<TimelineProps> = ({
           {/* COLUMN 2: GRID */}
           <div className="flex-grow relative" style={{ minWidth: totalContentWidth }}>
             
-            {/* Header */}
-            <div style={{ height: HEADER_HEIGHT }} className="sticky top-0 z-30 bg-white border-b border-gray-200 flex shadow-sm">
+            {/* Sticky Header - Fix: Added sticky top-0 and z-40 to stay above rows and group headers */}
+            <div style={{ height: HEADER_HEIGHT }} className="sticky top-0 z-40 bg-white border-b border-gray-200 flex shadow-sm">
                {columns.map((date, i) => {
                  const isSat = isWeekend(date) && date.getDay() === 6;
                  const isSun = isWeekend(date) && date.getDay() === 0;
@@ -595,13 +695,21 @@ const Timeline: React.FC<TimelineProps> = ({
                  {groups.map(group => {
                     const groupVehicles = vehiclesByGroup[group.id] || [];
                     const realVehicles = groupVehicles.filter(v => !v.isVirtual);
-                    const virtualVehicles = groupVehicles.filter(v => !!v.isVirtual);
+                    
+                    // FILTER: Only show virtual vehicles if dragging OR if they have assigned events
+                    const virtualVehicles = groupVehicles.filter(v => {
+                        if (!v.isVirtual) return false;
+                        const hasEvents = events.some(e => e.vehicleId === v.id);
+                        return isDraggingEvent || hasEvents;
+                    });
+                    
                     const queueKeys = pendingQueuesByGroup.get(group.id) || [];
                     const isCollapsed = collapsedGroups.has(group.id);
 
                     return (
                       <div key={group.id}>
-                        <div className="h-[29px] w-full border-y border-transparent bg-slate-50/50 sticky top-[54px] z-20" style={{ top: HEADER_HEIGHT }}></div>
+                        {/* Sticky Group Divider inside Grid - Fix: Set z-30 to slide under the date header (z-40) */}
+                        <div className="h-[29px] w-full border-y border-transparent bg-slate-50/50 sticky z-30" style={{ top: HEADER_HEIGHT }}></div>
                         {!isCollapsed && (
                             <>
                                 {queueKeys.map(key => {
@@ -613,22 +721,7 @@ const Timeline: React.FC<TimelineProps> = ({
                                     );
                                 })}
                                 
-                                {/* VIRTUAL VEHICLES (SWAP BUFFER) GRID */}
-                                {virtualVehicles.map(v => {
-                                    const layout = rowLayouts.get(v.id);
-                                    return (
-                                        <div 
-                                            key={v.id} 
-                                            style={{ height: layout?.height }} 
-                                            className="relative w-full border-b border-gray-100 pointer-events-auto bg-stripes bg-gray-50/30" 
-                                            onDragOver={(e) => {e.preventDefault(); e.dataTransfer.dropEffect = 'move'}} 
-                                            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('eventId'); if(id && onEventMove) onEventMove(id, v.id); }}
-                                        >
-                                           {layout?.eventsWithLanes.map(event => renderEventBar(event, event.laneIndex))}
-                                        </div>
-                                    )
-                                })}
-
+                                {/* MOVED REAL VEHICLES UP */}
                                 {realVehicles.map(v => {
                                     const layout = rowLayouts.get(v.id);
                                     const isSelectedRow = dragSelection?.vehicleId === v.id;
@@ -638,7 +731,7 @@ const Timeline: React.FC<TimelineProps> = ({
                                             style={{ height: layout?.height }} 
                                             className="relative w-full border-b border-transparent pointer-events-auto cursor-crosshair hover:bg-blue-50/10"
                                             onDragOver={(e) => {e.preventDefault(); e.dataTransfer.dropEffect = 'move'}} 
-                                            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('eventId'); if(id && onEventMove) onEventMove(id, v.id); }}
+                                            onDrop={(e) => handleDropOnVehicle(e, v.id)}
                                             onMouseDown={(e) => handleRowMouseDown(e, v.id)}
                                         >
                                            {layout?.eventsWithLanes.map(event => renderEventBar(event, event.laneIndex))}
@@ -654,6 +747,36 @@ const Timeline: React.FC<TimelineProps> = ({
                                                     <div className="text-[10px] text-blue-800 font-bold p-1">New</div>
                                                 </div>
                                            )}
+                                        </div>
+                                    )
+                                })}
+
+                                {/* VIRTUAL VEHICLES (SWAP BUFFER) GRID - MOVED TO BOTTOM */}
+                                {virtualVehicles.map(v => {
+                                    const layout = rowLayouts.get(v.id);
+                                    
+                                    return (
+                                        <div 
+                                            key={v.id} 
+                                            style={{ height: layout?.height }} 
+                                            className="relative w-full border-b border-gray-100 pointer-events-auto bg-amber-50/10 animate-in slide-in-from-top-2 fade-in duration-200" 
+                                            onDragOver={(e) => {e.preventDefault(); e.dataTransfer.dropEffect = 'move'}} 
+                                            onDrop={(e) => handleDropOnVehicle(e, v.id)}
+                                        >
+                                           {/* Visual Indicator: Only show giant dashed box if dragging */}
+                                           {isDraggingEvent && (
+                                                <div className="absolute inset-x-2 inset-y-2 border-2 border-dashed border-amber-300 rounded flex items-center justify-center bg-amber-50/30 z-0">
+                                                    <div className="flex items-center gap-1.5 text-amber-600/50">
+                                                        <ArrowLeftRight size={12} />
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider">Drop to Buffer</span>
+                                                    </div>
+                                                </div>
+                                           )}
+
+                                           {/* Events render on top */}
+                                           <div className="relative z-10 w-full h-full">
+                                                {layout?.eventsWithLanes.map(event => renderEventBar(event, event.laneIndex))}
+                                           </div>
                                         </div>
                                     )
                                 })}
@@ -686,13 +809,23 @@ const Timeline: React.FC<TimelineProps> = ({
             </div>
          </div>
          <div className="flex items-center gap-4 text-gray-400 text-[10px]">
-           <span className="font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{viewInfo}</span>
-           <span>Use <span className="font-bold text-gray-500">Shift + Drag</span> to scroll. Drag empty space to create block.</span>
+           <span>Drag empty space to create block.</span>
          </div>
       </div>
       
       <style>{`.bg-stripes { background-image: linear-gradient(45deg,rgba(0,0,0,0.02) 25%,transparent 25%,transparent 50%,rgba(0,0,0,0.02) 50%,rgba(0,0,0,0.02) 75%,transparent 75%,transparent 100%); background-size: 8px 8px; }`}</style>
     </div>
+
+    {/* Confirmation Modal */}
+    <MoveConfirmModal 
+       isOpen={moveConfirmState.isOpen}
+       event={moveConfirmState.event}
+       targetVehicle={vehicles.find(v => v.id === moveConfirmState.targetVehicleId) || null}
+       sourceVehicle={vehicles.find(v => v.id === moveConfirmState.sourceVehicleId)}
+       onConfirm={handleConfirmMove}
+       onCancel={() => setMoveConfirmState(prev => ({ ...prev, isOpen: false }))}
+    />
+    </>
   );
 };
 
